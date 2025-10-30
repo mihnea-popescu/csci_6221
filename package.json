@@ -1,0 +1,17 @@
+{
+  "name": "csci_6221",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Mihnea Popescu <mihnea.popescu56@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "elm": "^0.19.1-6",
+    "elm-live": "^4.0.2"
+  },
+  "scripts": {
+    "dev": "elm-live src/Main.elm --open --dir=. --start-page=index.html --pushstate -- --output=main.js",
+    "build": "elm make src/Main.elm --output=dist/main.js",
+    "build:opt": "elm make src/Main.elm --optimize --output=dist/main.js",
+    "serve:dist": "elm-live dist/main.js --dir=dist --no-reload"
+  }
+}

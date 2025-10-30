@@ -1,6 +1,6 @@
 {
   "name": "csci_6221",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "main": "index.js",
   "author": "Mihnea Popescu <mihnea.popescu56@gmail.com>",
   "license": "MIT",
@@ -9,9 +9,11 @@
     "elm-live": "^4.0.2"
   },
   "scripts": {
-    "dev": "elm-live src/Main.elm --open --dir=. --start-page=index.html --pushstate -- --output=main.js",
+    "dev": "elm-live src/Main.elm --open --hot --dir=. --start-page=index.html --pushstate -- --output=main.js",
     "build": "elm make src/Main.elm --output=dist/main.js",
     "build:opt": "elm make src/Main.elm --optimize --output=dist/main.js",
-    "serve:dist": "elm-live dist/main.js --dir=dist --no-reload"
+    "serve:dist": "elm-live dist/main.js --dir=dist --no-reload",
+    "cache:clean": "rm -rf elm-stuff node_modules dist build main.js && yarn cache clean",
+    "bump": "bash bump.sh"
   }
 }

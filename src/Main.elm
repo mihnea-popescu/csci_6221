@@ -2,10 +2,11 @@ module Main exposing (main)
 
 import Api
 import Browser
-import Html exposing (Html, button, div, img, input, text)
-import Html.Attributes exposing (src, style, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, button, div, img, text)
+import Html.Attributes exposing (src, style)
+import Html.Events exposing (onClick)
 import Http
+import Randomizer
 
 
 
@@ -13,7 +14,7 @@ import Http
 
 
 type alias Model =
-    { searchId : String
+    { randomizer : Randomizer.Model
     , result : RemoteData
     }
 
@@ -27,7 +28,7 @@ type RemoteData
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { searchId = "", result = NotAsked }, Cmd.none )
+    ( { randomizer = Randomizer.init, result = NotAsked }, Cmd.none )
 
 
 
@@ -35,31 +36,50 @@ init _ =
 
 
 type Msg
-    = UpdateSearch String
-    | FetchPokemon
-    | GotResponse (Result Http.Error Api.Pokemon)
+    = FetchRandom
+    | RandomizerMsg Randomizer.Msg
+    | GotPokemon (Result Http.Error Api.Pokemon)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        UpdateSearch idStr ->
-            ( { model | searchId = idStr }, Cmd.none )
+        -- 🔹 When button pressed → ask Randomizer to generate new number
+        FetchRandom ->
+            ( model, Cmd.map RandomizerMsg (Randomizer.update Randomizer.Generate model.randomizer |> thirdCmd) )
 
-        FetchPokemon ->
-            if String.isEmpty model.searchId then
-                ( model, Cmd.none )
+        -- 🔹 When Randomizer sends a message back (Generated n)
+        RandomizerMsg subMsg ->
+            let
+                ( newRand, maybeNum, nextCmd ) =
+                    Randomizer.update subMsg model.randomizer
+            in
+            case maybeNum of
+                Nothing ->
+                    ( { model | randomizer = newRand }, Cmd.map RandomizerMsg nextCmd )
 
-            else
-                ( { model | result = Loading }
-                , Api.getPokemonById model.searchId GotResponse
-                )
+                Just n ->
+                    ( { model | randomizer = newRand, result = Loading }
+                    , Cmd.batch
+                        [ Cmd.map RandomizerMsg nextCmd
+                        , Api.getPokemonById (String.fromInt n) GotPokemon
+                        ]
+                    )
 
-        GotResponse (Ok pokemon) ->
-            ( { model | result = Success pokemon }, Cmd.none )
+        GotPokemon (Ok poke) ->
+            ( { model | result = Success poke }, Cmd.none )
 
-        GotResponse (Err err) ->
+        GotPokemon (Err err) ->
             ( { model | result = Failure (Api.httpErrorToString err) }, Cmd.none )
+
+
+
+-- 🔸 Helper to extract the Cmd from Randomizer.update’s triple
+
+
+thirdCmd : ( a, b, Cmd c ) -> Cmd c
+thirdCmd ( _, _, c ) =
+    c
 
 
 
@@ -69,21 +89,13 @@ update msg model =
 view : Model -> Html Msg
 view model =
     div [ style "font-family" "sans-serif", style "text-align" "center", style "margin-top" "40px" ]
-        [ input
-            [ value model.searchId
-            , onInput UpdateSearch
-            , style "padding" "8px"
-            , style "width" "200px"
+        [ button
+            [ onClick FetchRandom
+            , style "padding" "10px 20px"
             , style "font-size" "16px"
-            , style "margin-right" "10px"
+            , style "cursor" "pointer"
             ]
-            []
-        , button
-            [ onClick FetchPokemon
-            , style "padding" "8px 16px"
-            , style "font-size" "16px"
-            ]
-            [ text "Fetch Pokémon" ]
+            [ text "🎲 Fetch Random Pokémon" ]
         , div [ style "margin-top" "30px" ] [ viewResult model.result ]
         ]
 
@@ -92,15 +104,14 @@ viewResult : RemoteData -> Html msg
 viewResult state =
     case state of
         NotAsked ->
-            text "Enter a Pokémon ID and press the button."
+            text "Press the button to get a random Pokémon!"
 
         Loading ->
             text "Loading..."
 
         Success poke ->
             div []
-                [ text ("ID: " ++ String.fromInt poke.id)
-                , div [] [ text ("Name: " ++ String.toUpper poke.name) ]
+                [ text ("#" ++ String.fromInt poke.id ++ " — " ++ String.toUpper poke.name)
                 , div [ style "margin-top" "12px" ]
                     [ img [ src poke.imageUrl, style "width" "200px" ] [] ]
                 ]

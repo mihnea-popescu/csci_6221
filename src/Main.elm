@@ -2,8 +2,8 @@ module Main exposing (main)
 
 import Api
 import Browser
-import Html exposing (Html, button, div, input, pre, text)
-import Html.Attributes exposing (style, value)
+import Html exposing (Html, button, div, img, input, text)
+import Html.Attributes exposing (src, style, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 
@@ -21,7 +21,7 @@ type alias Model =
 type RemoteData
     = NotAsked
     | Loading
-    | Success String
+    | Success Api.Pokemon
     | Failure String
 
 
@@ -37,7 +37,7 @@ init _ =
 type Msg
     = UpdateSearch String
     | FetchPokemon
-    | GotResponse (Result Http.Error String)
+    | GotResponse (Result Http.Error Api.Pokemon)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -55,8 +55,8 @@ update msg model =
                 , Api.getPokemonById model.searchId GotResponse
                 )
 
-        GotResponse (Ok rawJson) ->
-            ( { model | result = Success rawJson }, Cmd.none )
+        GotResponse (Ok pokemon) ->
+            ( { model | result = Success pokemon }, Cmd.none )
 
         GotResponse (Err err) ->
             ( { model | result = Failure (Api.httpErrorToString err) }, Cmd.none )
@@ -83,9 +83,8 @@ view model =
             , style "padding" "8px 16px"
             , style "font-size" "16px"
             ]
-            [ text "Fetch Pokémon JSON" ]
-        , div [ style "margin-top" "30px", style "text-align" "left", style "width" "80%", style "margin" "40px auto" ]
-            [ viewResult model.result ]
+            [ text "Fetch Pokémon" ]
+        , div [ style "margin-top" "30px" ] [ viewResult model.result ]
         ]
 
 
@@ -98,9 +97,13 @@ viewResult state =
         Loading ->
             text "Loading..."
 
-        Success json ->
-            pre [ style "background-color" "#f3f3f3", style "padding" "16px", style "overflow-x" "auto" ]
-                [ text json ]
+        Success poke ->
+            div []
+                [ text ("ID: " ++ String.fromInt poke.id)
+                , div [] [ text ("Name: " ++ String.toUpper poke.name) ]
+                , div [ style "margin-top" "12px" ]
+                    [ img [ src poke.imageUrl, style "width" "200px" ] [] ]
+                ]
 
         Failure err ->
             text ("Error: " ++ err)

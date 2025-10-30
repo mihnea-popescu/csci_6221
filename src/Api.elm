@@ -1,18 +1,32 @@
-module Api exposing (getPokemonById, httpErrorToString)
+module Api exposing (Pokemon, getPokemonById, httpErrorToString)
 
 import Http
+import Json.Decode as Decode exposing (Decoder)
 
 
-getPokemonById : String -> (Result Http.Error String -> msg) -> Cmd msg
+type alias Pokemon =
+    { id : Int
+    , name : String
+    , imageUrl : String
+    }
+
+
+pokemonDecoder : Decoder Pokemon
+pokemonDecoder =
+    Decode.map3 Pokemon
+        (Decode.field "id" Decode.int)
+        (Decode.field "name" Decode.string)
+        (Decode.at [ "sprites", "front_default" ] (Decode.maybe Decode.string)
+            |> Decode.map (Maybe.withDefault "")
+        )
+
+
+getPokemonById : String -> (Result Http.Error Pokemon -> msg) -> Cmd msg
 getPokemonById pokemonId toMsg =
     Http.get
         { url = "https://pokeapi.co/api/v2/pokemon/" ++ pokemonId
-        , expect = Http.expectString toMsg
+        , expect = Http.expectJson toMsg pokemonDecoder
         }
-
-
-
--- ERROR HANDLING
 
 
 httpErrorToString : Http.Error -> String

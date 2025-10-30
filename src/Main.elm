@@ -1,9 +1,11 @@
 module Main exposing (main)
 
+import Api
 import Browser
-import Html exposing (Html, button, div, text)
-import Html.Attributes exposing (style)
-import Html.Events exposing (onClick)
+import Html exposing (Html, button, div, input, pre, text)
+import Html.Attributes exposing (style, value)
+import Html.Events exposing (onClick, onInput)
+import Http
 
 
 
@@ -11,12 +13,21 @@ import Html.Events exposing (onClick)
 
 
 type alias Model =
-    { count : Int }
+    { searchId : String
+    , result : RemoteData
+    }
 
 
-init : Model
-init =
-    { count = 0 }
+type RemoteData
+    = NotAsked
+    | Loading
+    | Success String
+    | Failure String
+
+
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { searchId = "", result = NotAsked }, Cmd.none )
 
 
 
@@ -24,18 +35,31 @@ init =
 
 
 type Msg
-    = Inc
-    | Dec
+    = UpdateSearch String
+    | FetchPokemon
+    | GotResponse (Result Http.Error String)
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Inc ->
-            { model | count = model.count + 1 }
+        UpdateSearch idStr ->
+            ( { model | searchId = idStr }, Cmd.none )
 
-        Dec ->
-            { model | count = model.count - 1 }
+        FetchPokemon ->
+            if String.isEmpty model.searchId then
+                ( model, Cmd.none )
+
+            else
+                ( { model | result = Loading }
+                , Api.getPokemonById model.searchId GotResponse
+                )
+
+        GotResponse (Ok rawJson) ->
+            ( { model | result = Success rawJson }, Cmd.none )
+
+        GotResponse (Err err) ->
+            ( { model | result = Failure (Api.httpErrorToString err) }, Cmd.none )
 
 
 
@@ -44,21 +68,53 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ div [] [ text ("Count: " ++ String.fromInt model.count) ]
-        , button [ onClick Inc ] [ text "+1" ]
-        , button [ onClick Dec, Html.Attributes.style "margin-left" "8px" ] [ text "-1" ]
+    div [ style "font-family" "sans-serif", style "text-align" "center", style "margin-top" "40px" ]
+        [ input
+            [ value model.searchId
+            , onInput UpdateSearch
+            , style "padding" "8px"
+            , style "width" "200px"
+            , style "font-size" "16px"
+            , style "margin-right" "10px"
+            ]
+            []
+        , button
+            [ onClick FetchPokemon
+            , style "padding" "8px 16px"
+            , style "font-size" "16px"
+            ]
+            [ text "Fetch Pokémon JSON" ]
+        , div [ style "margin-top" "30px", style "text-align" "left", style "width" "80%", style "margin" "40px auto" ]
+            [ viewResult model.result ]
         ]
 
 
+viewResult : RemoteData -> Html msg
+viewResult state =
+    case state of
+        NotAsked ->
+            text "Enter a Pokémon ID and press the button."
 
--- PROGRAM
+        Loading ->
+            text "Loading..."
+
+        Success json ->
+            pre [ style "background-color" "#f3f3f3", style "padding" "16px", style "overflow-x" "auto" ]
+                [ text json ]
+
+        Failure err ->
+            text ("Error: " ++ err)
+
+
+
+-- MAIN
 
 
 main : Program () Model Msg
 main =
-    Browser.sandbox
+    Browser.element
         { init = init
         , update = update
         , view = view
+        , subscriptions = \_ -> Sub.none
         }

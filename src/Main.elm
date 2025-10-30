@@ -36,19 +36,28 @@ init _ =
 
 
 type Msg
-    = FetchRandom
-    | RandomizerMsg Randomizer.Msg
+    = RandomizerMsg Randomizer.Msg
+    | FetchRandom
     | GotPokemon (Result Http.Error Api.Pokemon)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        -- 🔹 When button pressed → ask Randomizer to generate new number
         FetchRandom ->
-            ( model, Cmd.map RandomizerMsg (Randomizer.update Randomizer.Generate model.randomizer |> thirdCmd) )
+            let
+                ( newRand, maybeNum, nextCmd ) =
+                    Randomizer.update Randomizer.Generate model.randomizer
+            in
+            case maybeNum of
+                Nothing ->
+                    ( { model | randomizer = newRand }, Cmd.map RandomizerMsg nextCmd )
 
-        -- 🔹 When Randomizer sends a message back (Generated n)
+                Just n ->
+                    ( { model | randomizer = newRand, result = Loading }
+                    , Api.getPokemonById (String.fromInt n) GotPokemon
+                    )
+
         RandomizerMsg subMsg ->
             let
                 ( newRand, maybeNum, nextCmd ) =
@@ -60,10 +69,7 @@ update msg model =
 
                 Just n ->
                     ( { model | randomizer = newRand, result = Loading }
-                    , Cmd.batch
-                        [ Cmd.map RandomizerMsg nextCmd
-                        , Api.getPokemonById (String.fromInt n) GotPokemon
-                        ]
+                    , Api.getPokemonById (String.fromInt n) GotPokemon
                     )
 
         GotPokemon (Ok poke) ->
@@ -74,22 +80,14 @@ update msg model =
 
 
 
--- 🔸 Helper to extract the Cmd from Randomizer.update’s triple
-
-
-thirdCmd : ( a, b, Cmd c ) -> Cmd c
-thirdCmd ( _, _, c ) =
-    c
-
-
-
 -- VIEW
 
 
 view : Model -> Html Msg
 view model =
     div [ style "font-family" "sans-serif", style "text-align" "center", style "margin-top" "40px" ]
-        [ button
+        [ Html.map RandomizerMsg (Randomizer.view model.randomizer)
+        , button
             [ onClick FetchRandom
             , style "padding" "10px 20px"
             , style "font-size" "16px"

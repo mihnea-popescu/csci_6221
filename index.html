@@ -2,8 +2,8 @@
 <html>
 
 <head>
-	<meta charset="UTF-8">
-	<title>CSCI 6221 - Pokemon Guesser</title>
+	<meta charset="UTF-8" />
+	<title>Elm Pokémon</title>
 	<style>
 		body {
 			margin: 0;
@@ -15,11 +15,31 @@
 
 <body>
 	<div id="elm"></div>
-	<!-- Load Elm code -->
 	<script src="main.js"></script>
 	<script>
-		var app = Elm.Main.init({
-			node: document.getElementById('elm')
+		const flags = {
+			userAgent: navigator.userAgent,
+			screenWidth: window.screen.width,
+			screenHeight: window.screen.height,
+			language: navigator.language,
+			timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+		};
+
+		const app = Elm.Main.init({
+			node: document.getElementById("elm"),
+			flags,
+		});
+
+		const STORAGE_KEY = "pokemon-seed";
+
+		app.ports.loadSeed.subscribe(() => {
+			const stored = localStorage.getItem(STORAGE_KEY);
+			const seed = stored ? parseInt(stored) : 0;
+			app.ports.onSeedLoaded.send(seed);
+		});
+
+		app.ports.saveSeed.subscribe((seed) => {
+			localStorage.setItem(STORAGE_KEY, String(seed));
 		});
 	</script>
 </body>

@@ -1,10 +1,17 @@
-module Randomizer exposing (Model, Msg(..), generateCmd, init, update, view)
+module Randomizer exposing
+    ( Model
+    , Msg(..)
+    , generateCmd
+    , init
+    , initWithSeed
+    , seedFromClientInfo
+    , update
+    )
 
-import Html exposing (Html, button, div, input, text)
-import Html.Attributes exposing (placeholder, style, value)
-import Html.Events exposing (onClick, onInput)
+import Char
 import Random
 import Set exposing (Set)
+import String
 
 
 
@@ -14,24 +21,31 @@ import Set exposing (Set)
 type alias Model =
     { used : Set Int
     , seed : Maybe Random.Seed
-    , seedInput : String
+    , baseSeed : Int
     }
 
 
 init : Model
 init =
-    { used = Set.empty, seed = Nothing, seedInput = "" }
+    { used = Set.empty, seed = Nothing, baseSeed = 0 }
+
+
+initWithSeed : Int -> Model
+initWithSeed seedInt =
+    { used = Set.empty
+    , seed = Just (Random.initialSeed seedInt)
+    , baseSeed = seedInt
+    }
 
 
 
--- MESSAGE TYPE
+-- MESSAGES
 
 
 type Msg
     = Generate
     | Generated Int
-    | SetSeed String
-    | UpdateSeedInput String
+    | ResetSeed
 
 
 
@@ -41,16 +55,19 @@ type Msg
 update : Msg -> Model -> ( Model, Maybe Int, Cmd Msg )
 update msg model =
     case msg of
-        UpdateSeedInput val ->
-            ( { model | seedInput = val }, Nothing, Cmd.none )
-
-        SetSeed seedStr ->
-            case String.toInt seedStr of
-                Just n ->
-                    ( { model | seed = Just (Random.initialSeed n), used = Set.empty }, Nothing, Cmd.none )
-
-                Nothing ->
-                    ( model, Nothing, Cmd.none )
+        ResetSeed ->
+            let
+                newSeedInt =
+                    (model.baseSeed * 37 + 13) |> modBy 999999
+            in
+            ( { model
+                | seed = Just (Random.initialSeed newSeedInt)
+                , used = Set.empty
+                , baseSeed = newSeedInt
+              }
+            , Nothing
+            , Cmd.none
+            )
 
         Generate ->
             case model.seed of
@@ -66,7 +83,10 @@ update msg model =
                         update Generate { model | seed = Just nextSeed }
 
                     else
-                        ( { model | used = Set.insert num model.used, seed = Just nextSeed }, Just num, Cmd.none )
+                        ( { model | used = Set.insert num model.used, seed = Just nextSeed }
+                        , Just num
+                        , Cmd.none
+                        )
 
         Generated n ->
             if Set.member n model.used then
@@ -86,26 +106,32 @@ generateCmd =
 
 
 
--- VIEW (Seed Input UI)
+-- CLIENT INFO TO SEED
 
 
-view : Model -> Html Msg
-view model =
-    div [ style "margin-bottom" "20px" ]
-        [ input
-            [ value model.seedInput
-            , placeholder "Enter seed (number)"
-            , onInput UpdateSeedInput
-            , style "padding" "8px"
-            , style "font-size" "16px"
-            , style "width" "180px"
-            , style "margin-right" "8px"
-            ]
-            []
-        , button
-            [ onClick (SetSeed model.seedInput)
-            , style "padding" "8px 16px"
-            , style "font-size" "16px"
-            ]
-            [ text "Set Seed" ]
-        ]
+type alias ClientInfo =
+    { userAgent : String
+    , screenWidth : Int
+    , screenHeight : Int
+    , language : String
+    , timezone : String
+    }
+
+
+seedFromClientInfo : ClientInfo -> Int
+seedFromClientInfo info =
+    let
+        str =
+            info.userAgent
+                ++ String.fromInt info.screenWidth
+                ++ String.fromInt info.screenHeight
+                ++ info.language
+                ++ info.timezone
+
+        hash =
+            String.foldl
+                (\ch acc -> (acc * 31 + Char.toCode ch) |> modBy 999999)
+                7
+                str
+    in
+    hash

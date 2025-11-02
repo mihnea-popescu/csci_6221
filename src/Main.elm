@@ -2,17 +2,27 @@ port module Main exposing (main)
 
 import Api
 import Browser
-import Html exposing (Html, button, div, img, text)
-import Html.Attributes exposing (src, style)
+import Game.State
+import Html exposing (Html, button, div, text)
+import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
 import Http
+import Process
 import Randomizer
+import Task
+import Types.GameState as GameState exposing (GameState)
+import Types.Msg exposing (Msg(..))
+import UI.Feedback
+import UI.GuessInput
+import UI.PokemonDisplay
+import UI.ScoreBoard
 
 
 
--- PORTS
+-- PORTS (Elm <-> JavaScript Communication)
 
 
+-- Mihnea's original ports for localStorage
 port saveSeed : Int -> Cmd msg
 
 
@@ -20,6 +30,19 @@ port loadSeed : () -> Cmd msg
 
 
 port onSeedLoaded : (Int -> msg) -> Sub msg
+
+
+
+-- Jaimin's new ports for sound effects
+
+
+port playNewPokemonSound : () -> Cmd msg
+
+
+port playCorrectGuessSound : () -> Cmd msg
+
+
+port playFailureSound : () -> Cmd msg
 
 
 
@@ -41,17 +64,10 @@ type alias Flags =
 
 type alias Model =
     { randomizer : Randomizer.Model
-    , result : RemoteData
+    , gameState : GameState
     , loadedFromStorage : Bool
     , defaultSeed : Int
     }
-
-
-type RemoteData
-    = NotAsked
-    | Loading
-    | Success Api.Pokemon
-    | Failure String
 
 
 
@@ -71,12 +87,11 @@ init flags =
                 }
     in
     ( { randomizer = Randomizer.initWithSeed fingerprintSeed
-      , result = NotAsked
+      , gameState = GameState.init
       , loadedFromStorage = False
       , defaultSeed = fingerprintSeed
       }
     , loadSeed ()
-      -- request stored seed from JS
     )
 
 
@@ -84,20 +99,10 @@ init flags =
 -- UPDATE
 
 
-type Msg
-    = RandomizerMsg Randomizer.Msg
-    | FetchRandom
-    | GotPokemon (Result Http.Error Api.Pokemon)
-    | SeedLoaded Int
-    | SaveCurrentSeed
-    | ResetSeed
-
-
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         SeedLoaded loadedSeed ->
-            -- ✅ If loaded seed is 0, use fingerprintSeed instead
             let
                 actualSeed =
                     if loadedSeed == 0 then
@@ -139,11 +144,11 @@ update msg model =
                     )
 
                 Just n ->
-                    ( { model
-                        | randomizer = newRand
-                        , result = Loading
-                      }
-                    , Api.getPokemonById (String.fromInt n) GotPokemon
+                    ( { model | randomizer = newRand }
+                    , Cmd.batch
+                        [ Api.getPokemonById (String.fromInt n) GotPokemon
+                        , playNewPokemonSound ()
+                        ]
                     )
 
         RandomizerMsg subMsg ->
@@ -158,18 +163,76 @@ update msg model =
                     )
 
                 Just n ->
-                    ( { model
-                        | randomizer = newRand
-                        , result = Loading
-                      }
-                    , Api.getPokemonById (String.fromInt n) GotPokemon
+                    ( { model | randomizer = newRand }
+                    , Cmd.batch
+                        [ Api.getPokemonById (String.fromInt n) GotPokemon
+                        , playNewPokemonSound ()
+                        ]
                     )
 
-        GotPokemon (Ok poke) ->
-            ( { model | result = Success poke }, Cmd.none )
+        GotPokemon result ->
+            let
+                ( newGameState, cmd ) =
+                    Game.State.update msg model.gameState
+            in
+            ( { model | gameState = newGameState }, cmd )
 
-        GotPokemon (Err err) ->
-            ( { model | result = Failure (Api.httpErrorToString err) }, Cmd.none )
+        -- Jaimin's messages - delegate to Game.State
+        UserGuessInput _ ->
+            let
+                ( newGameState, cmd ) =
+                    Game.State.update msg model.gameState
+            in
+            ( { model | gameState = newGameState }, cmd )
+
+        SubmitGuess ->
+            let
+                ( newGameState, cmd ) =
+                    Game.State.update msg model.gameState
+
+                -- Play appropriate sound based on feedback
+                soundCmd =
+                    case newGameState.feedback of
+                        GameState.Correct ->
+                            Cmd.batch
+                                [ playCorrectGuessSound ()
+                                , delayedFetch
+                                ]
+
+                        GameState.Failed _ ->
+                            Cmd.batch
+                                [ playFailureSound ()
+                                , delayedFetch
+                                ]
+
+                        _ ->
+                            Cmd.none
+            in
+            ( { model | gameState = newGameState }
+            , Cmd.batch [ cmd, soundCmd ]
+            )
+
+        NextPokemon ->
+            update FetchRandom model
+
+        ResetGame ->
+            let
+                ( newGameState, cmd ) =
+                    Game.State.update msg model.gameState
+            in
+            ( { model | gameState = newGameState }, cmd )
+
+
+
+-- HELPERS
+
+
+{-| Auto-fetch next Pokemon after 5 seconds delay
+-}
+delayedFetch : Cmd Msg
+delayedFetch =
+    Process.sleep 5000
+        |> Task.perform (always NextPokemon)
 
 
 
@@ -179,49 +242,148 @@ update msg model =
 view : Model -> Html Msg
 view model =
     div
-        [ style "font-family" "sans-serif"
-        , style "text-align" "center"
-        , style "margin-top" "40px"
+        [ style "font-family" "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        , style "max-width" "1200px"
+        , style "margin" "0 auto"
+        , style "padding" "20px"
+        , style "background-color" "white"
+        , style "min-height" "100vh"
         ]
-        [ button
-            [ onClick FetchRandom
-            , style "padding" "10px 20px"
-            , style "font-size" "16px"
-            , style "cursor" "pointer"
+        [ -- Header
+          div
+            [ style "text-align" "center"
+            , style "margin-bottom" "30px"
             ]
-            [ text "🎲 Fetch Random Pokémon" ]
-        , div [ style "margin-top" "30px" ] [ viewResult model.result ]
-        , div [ style "margin-top" "20px" ]
-            [ text ("🌱 Current Seed: " ++ String.fromInt model.randomizer.baseSeed)
-            , button
-                [ onClick ResetSeed
-                , style "margin-left" "12px"
-                , style "padding" "6px 12px"
-                , style "font-size" "14px"
+            [ div
+                [ style "font-size" "42px"
+                , style "font-weight" "bold"
+                , style "color" "#2c3e50"
+                , style "margin-bottom" "10px"
                 ]
-                [ text "Reset Seed" ]
+                [ text "🎮 Pokémon Guessing Game" ]
+            , div
+                [ style "color" "#7f8c8d"
+                , style "font-size" "16px"
+                ]
+                [ text "Can you guess them all?" ]
+            ]
+
+        -- Main Game Container with Two Columns
+        , div
+            [ style "display" "grid"
+            , style "grid-template-columns" "1fr 2fr"
+            , style "gap" "30px"
+            , style "margin-bottom" "30px"
+            ]
+            [ -- LEFT COLUMN: Scoreboard and Controls
+              div
+                [ style "display" "flex"
+                , style "flex-direction" "column"
+                , style "gap" "20px"
+                ]
+                [ -- Scoreboard
+                  UI.ScoreBoard.view model.gameState
+
+                -- Control Buttons
+                , div
+                    [ style "background-color" "#f8f9fa"
+                    , style "padding" "20px"
+                    , style "border-radius" "12px"
+                    , style "box-shadow" "0 2px 8px rgba(0,0,0,0.1)"
+                    ]
+                    [ div
+                        [ style "text-align" "center"
+                        , style "margin-bottom" "15px"
+                        , style "font-weight" "bold"
+                        , style "color" "#2c3e50"
+                        ]
+                        [ text "Game Controls" ]
+                    , div
+                        [ style "display" "flex"
+                        , style "flex-direction" "column"
+                        , style "gap" "10px"
+                        ]
+                        [ button
+                            [ onClick ResetGame
+                            , style "padding" "12px 20px"
+                            , style "font-size" "16px"
+                            , style "background-color" "#e74c3c"
+                            , style "color" "white"
+                            , style "border" "none"
+                            , style "border-radius" "6px"
+                            , style "cursor" "pointer"
+                            , style "font-weight" "bold"
+                            , style "transition" "all 0.3s"
+                            ]
+                            [ text "🔄 Reset Game" ]
+                        , button
+                            [ onClick ResetSeed
+                            , style "padding" "12px 20px"
+                            , style "font-size" "16px"
+                            , style "background-color" "#95a5a6"
+                            , style "color" "white"
+                            , style "border" "none"
+                            , style "border-radius" "6px"
+                            , style "cursor" "pointer"
+                            , style "font-weight" "bold"
+                            , style "transition" "all 0.3s"
+                            ]
+                            [ text "🔀 Reset Seed" ]
+                        , div
+                            [ style "margin-top" "10px"
+                            , style "padding" "10px"
+                            , style "background-color" "white"
+                            , style "border-radius" "6px"
+                            , style "text-align" "center"
+                            , style "font-size" "14px"
+                            , style "color" "#7f8c8d"
+                            ]
+                            [ text ("🌱 Seed: " ++ String.fromInt model.randomizer.baseSeed) ]
+                        ]
+                    ]
+                ]
+
+            -- RIGHT COLUMN: Game Area
+            , div
+                [ style "display" "flex"
+                , style "flex-direction" "column"
+                , style "gap" "20px"
+                ]
+                [ -- Start button (left-aligned)
+                  div []
+                    [ button
+                        [ onClick FetchRandom
+                        , style "padding" "15px 35px"
+                        , style "font-size" "18px"
+                        , style "cursor" "pointer"
+                        , style "background-color" "#3498db"
+                        , style "color" "white"
+                        , style "border" "none"
+                        , style "border-radius" "8px"
+                        , style "font-weight" "bold"
+                        , style "box-shadow" "0 4px 10px rgba(52,152,219,0.3)"
+                        , style "transition" "all 0.3s"
+                        ]
+                        [ text "🎲 Start New Pokémon" ]
+                    ]
+
+                -- Pokemon Display
+                , div
+                    [ style "background-color" "#f8f9fa"
+                    , style "padding" "30px"
+                    , style "border-radius" "12px"
+                    , style "box-shadow" "0 2px 8px rgba(0,0,0,0.1)"
+                    ]
+                    [ UI.PokemonDisplay.view model.gameState ]
+
+                -- Guess Input
+                , UI.GuessInput.view model.gameState
+
+                -- Feedback
+                , UI.Feedback.view model.gameState.feedback
+                ]
             ]
         ]
-
-
-viewResult : RemoteData -> Html msg
-viewResult state =
-    case state of
-        NotAsked ->
-            text "Press the button to get a random Pokémon!"
-
-        Loading ->
-            text "Loading..."
-
-        Success poke ->
-            div []
-                [ text ("#" ++ String.fromInt poke.id ++ " — " ++ String.toUpper poke.name)
-                , div [ style "margin-top" "12px" ]
-                    [ img [ src poke.imageUrl, style "width" "200px" ] [] ]
-                ]
-
-        Failure err ->
-            text ("Error: " ++ err)
 
 
 

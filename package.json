@@ -14,5 +14,8 @@
     "build:opt": "elm make src/Main.elm --optimize --output=dist/main.js",
     "serve:dist": "elm-live dist/main.js --dir=dist --no-reload",
     "cache:clean": "rm -rf elm-stuff node_modules dist build main.js && yarn cache clean"
+  },
+  "devDependencies": {
+    "vite-plugin-elm": "^3.0.1"
   }
 }

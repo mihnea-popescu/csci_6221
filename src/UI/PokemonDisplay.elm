@@ -3,7 +3,7 @@ module UI.PokemonDisplay exposing (view)
 import Api
 import Html exposing (Html, div, img, text)
 import Html.Attributes exposing (src, style)
-import Types.GameState exposing (GameState)
+import Types.GameState exposing (Feedback(..), GameState)
 import Types.Msg exposing (Msg)
 
 
@@ -20,6 +20,25 @@ view gameState =
                 [ text "🎮 Press 'Start New Pokemon' to begin!" ]
 
         Just pokemon ->
+            let
+                shouldHidePokemon =
+                    case gameState.feedback of
+                        Correct ->
+                            False
+
+                        Failed _ ->
+                            False
+
+                        _ ->
+                            True
+
+                silhouetteStyles =
+                    if shouldHidePokemon then
+                        [ style "filter" "brightness(0) drop-shadow(0 0 12px rgba(0,0,0,0.5))" ]
+
+                    else
+                        []
+            in
             div [ style "text-align" "center", style "margin" "25px 0" ]
                 [ div
                     [ style "font-size" "20px"
@@ -29,14 +48,13 @@ view gameState =
                     [ text ("#" ++ String.fromInt pokemon.id) ]
                 , div []
                     [ img
-                        [ src pokemon.imageUrl
-                        , style "width" "250px"
-                        , style "height" "250px"
-                        , style "image-rendering" "pixelated"
-                        
-                        -- TODO: Seeam will add silhouette effect here
-                        -- , style "filter" "brightness(0)"
-                        ]
+                        ( [ src pokemon.imageUrl
+                          , style "width" "250px"
+                          , style "height" "250px"
+                          , style "image-rendering" "pixelated"
+                          ]
+                            ++ silhouetteStyles
+                        )
                         []
                     ]
                 ]

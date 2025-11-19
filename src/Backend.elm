@@ -23,7 +23,7 @@ type alias SaveResponse =
 
 baseUrl : String
 baseUrl =
-    "http://localhost:9000"
+    "https://backendcsci6221-production.up.railway.app"
 
 
 fetchLeaderboard : (Result Http.Error (List LeaderboardEntry) -> msg) -> Cmd msg

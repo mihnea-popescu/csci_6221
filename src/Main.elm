@@ -280,7 +280,7 @@ update msg model =
                 updatedLeaderboard =
                     { leaderboard
                         | isLoading = False
-                        , error = Just (Api.httpErrorToString err)
+                        , error = Just (leaderboardUnavailableMessage err)
                     }
             in
             ( { model | leaderboard = updatedLeaderboard }
@@ -335,7 +335,7 @@ update msg model =
                 updatedLeaderboard =
                     { leaderboard
                         | isSaving = False
-                        , saveError = Just (Api.httpErrorToString err)
+                        , saveError = Just (leaderboardUnavailableMessage err)
                     }
             in
             ( { model | leaderboard = updatedLeaderboard }
@@ -374,6 +374,15 @@ delayedFetch : Cmd Msg
 delayedFetch =
     Process.sleep 5000
         |> Task.perform (always NextPokemon)
+
+
+leaderboardUnavailableMessage : Http.Error -> String
+leaderboardUnavailableMessage err =
+    let
+        details =
+            Api.httpErrorToString err
+    in
+    "Leaderboard is not available right now. Please try again later. (" ++ details ++ ")"
 
 
 

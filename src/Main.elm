@@ -1,21 +1,25 @@
 port module Main exposing (main)
 
 import Api
+import Backend
 import Browser
 import Game.State
 import Html exposing (Html, button, div, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
 import Http
+import Platform.Sub as Sub
 import Process
 import Randomizer
 import Task
 import Types.GameState as GameState exposing (GameState)
+import Types.Leaderboard as Leaderboard exposing (LeaderboardState)
 import Types.Msg exposing (Msg(..))
 import UI.Feedback
 import UI.GuessInput
 import UI.PokemonDisplay
 import UI.ScoreBoard
+import UI.Leaderboard
 
 
 
@@ -30,6 +34,15 @@ port loadSeed : () -> Cmd msg
 
 
 port onSeedLoaded : (Int -> msg) -> Sub msg
+
+
+port savePlayerName : String -> Cmd msg
+
+
+port loadPlayerName : () -> Cmd msg
+
+
+port onPlayerNameLoaded : (Maybe String -> msg) -> Sub msg
 
 
 
@@ -67,6 +80,7 @@ type alias Model =
     , gameState : GameState
     , loadedFromStorage : Bool
     , defaultSeed : Int
+    , leaderboard : LeaderboardState
     }
 
 
@@ -90,8 +104,13 @@ init flags =
       , gameState = GameState.init
       , loadedFromStorage = False
       , defaultSeed = fingerprintSeed
+      , leaderboard = Leaderboard.initState
       }
-    , loadSeed ()
+    , Cmd.batch
+        [ loadSeed ()
+        , loadPlayerName ()
+        , Backend.fetchLeaderboard LeaderboardLoaded
+        ]
     )
 
 
@@ -222,6 +241,128 @@ update msg model =
             in
             ( { model | gameState = newGameState }, cmd )
 
+        FetchLeaderboard ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | isLoading = True
+                        , error = Nothing
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Backend.fetchLeaderboard LeaderboardLoaded
+            )
+
+        LeaderboardLoaded (Ok entries) ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | entries = entries
+                        , isLoading = False
+                        , error = Nothing
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Cmd.none
+            )
+
+        LeaderboardLoaded (Err err) ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | isLoading = False
+                        , error = Just (leaderboardUnavailableMessage err)
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Cmd.none
+            )
+
+        SaveScore ->
+            if model.gameState.score <= 0 || model.leaderboard.isSaving then
+                ( model, Cmd.none )
+
+            else
+                let
+                    leaderboard =
+                        model.leaderboard
+
+                    updatedLeaderboard =
+                        { leaderboard
+                            | isSaving = True
+                            , saveError = Nothing
+                            , lastSavedName = Nothing
+                        }
+                in
+                ( { model | leaderboard = updatedLeaderboard }
+                , Backend.saveScore model.gameState.score leaderboard.playerName ScoreSaved
+                )
+
+        ScoreSaved (Ok response) ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | isSaving = False
+                        , lastSavedName = Just response.name
+                        , playerName = Just response.name
+                        , saveError = Nothing
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Cmd.batch
+                [ Backend.fetchLeaderboard LeaderboardLoaded
+                , savePlayerName response.name
+                ]
+            )
+
+        ScoreSaved (Err err) ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | isSaving = False
+                        , saveError = Just (leaderboardUnavailableMessage err)
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Cmd.none
+            )
+
+        PlayerNameLoaded maybeName ->
+            let
+                leaderboard =
+                    model.leaderboard
+
+                updatedLeaderboard =
+                    { leaderboard
+                        | playerName = maybeName
+                        , lastSavedName =
+                            case maybeName of
+                                Just name ->
+                                    Just name
+
+                                Nothing ->
+                                    leaderboard.lastSavedName
+                    }
+            in
+            ( { model | leaderboard = updatedLeaderboard }
+            , Cmd.none
+            )
+
 
 
 -- HELPERS
@@ -233,6 +374,15 @@ delayedFetch : Cmd Msg
 delayedFetch =
     Process.sleep 5000
         |> Task.perform (always NextPokemon)
+
+
+leaderboardUnavailableMessage : Http.Error -> String
+leaderboardUnavailableMessage err =
+    let
+        details =
+            Api.httpErrorToString err
+    in
+    "Leaderboard is not available right now. Please try again later. (" ++ details ++ ")"
 
 
 
@@ -283,6 +433,7 @@ view model =
                 ]
                 [ -- Scoreboard
                   UI.ScoreBoard.view model.gameState
+                , UI.Leaderboard.view model.gameState.score model.leaderboard
 
                 -- Control Buttons
                 , div
@@ -396,5 +547,9 @@ main =
         { init = init
         , update = update
         , view = view
-        , subscriptions = \_ -> onSeedLoaded SeedLoaded
+        , subscriptions = \_ ->
+            Sub.batch
+                [ onSeedLoaded SeedLoaded
+                , onPlayerNameLoaded PlayerNameLoaded
+                ]
         }

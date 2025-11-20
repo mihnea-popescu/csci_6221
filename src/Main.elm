@@ -551,7 +551,7 @@ view model =
                                     , style "font-weight" "bold"
                                     , style "transition" "all 0.3s"
                                     ]
-                                    []
+                                    [ text Set ]
                                 ]
                             ]
                         ]

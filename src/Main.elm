@@ -155,7 +155,10 @@ update msg model =
                     ( model, Cmd.none )
 
                 Just seed ->
-                    ( { model | randomizer = Randomizer.initWithSeed seed }
+                    ( { model 
+                        | randomizer = Randomizer.initWithSeed seed
+                        , gameState = GameState.init
+                      }
                       , saveSeed seed
                     )
 
@@ -551,7 +554,7 @@ view model =
                                     , style "font-weight" "bold"
                                     , style "transition" "all 0.3s"
                                     ]
-                                    [ text Set ]
+                                    [ text "Set" ]
                                 ]
                             ]
                         ]

@@ -368,11 +368,11 @@ update msg model =
 -- HELPERS
 
 
-{-| Auto-fetch next Pokemon after 5 seconds delay
+{-| Auto-fetch next Pokemon after 2 seconds delay
 -}
 delayedFetch : Cmd Msg
 delayedFetch =
-    Process.sleep 5000
+    Process.sleep 2000
         |> Task.perform (always NextPokemon)
 
 

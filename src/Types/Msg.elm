@@ -22,3 +22,5 @@ type Msg
     | SubmitGuess
     | NextPokemon
     | ResetGame
+    | SetSeed
+    | SeedInputChanged String

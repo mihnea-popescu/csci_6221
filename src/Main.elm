@@ -4,9 +4,9 @@ import Api
 import Backend
 import Browser
 import Game.State
-import Html exposing (Html, button, div, text)
-import Html.Attributes exposing (style)
-import Html.Events exposing (onClick)
+import Html exposing (Html, button, div, text, input)
+import Html.Attributes exposing (style, type_, placeholder, value, min, max)
+import Html.Events exposing (onClick, onSubmit, onInput)
 import Http
 import Platform.Sub as Sub
 import Process
@@ -80,6 +80,7 @@ type alias Model =
     , gameState : GameState
     , loadedFromStorage : Bool
     , defaultSeed : Int
+    , seedInput : String
     , leaderboard : LeaderboardState
     }
 
@@ -104,6 +105,7 @@ init flags =
       , gameState = GameState.init
       , loadedFromStorage = False
       , defaultSeed = fingerprintSeed
+      , seedInput = ""
       , leaderboard = Leaderboard.initState
       }
     , Cmd.batch
@@ -141,6 +143,22 @@ update msg model =
                 , saveSeed actualSeed
                 )
 
+        SeedInputChanged input ->
+            ( { model | seedInput = input }, Cmd.none )
+
+        SetSeed ->
+            let
+                input = String.toInt model.seedInput
+            in
+            case input of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just seed ->
+                    ( { model | randomizer = Randomizer.initWithSeed seed }
+                      , saveSeed seed
+                    )
+
         SaveCurrentSeed ->
             ( model, saveSeed model.randomizer.baseSeed )
 
@@ -169,7 +187,6 @@ update msg model =
                         , playNewPokemonSound ()
                         ]
                     )
-
         RandomizerMsg subMsg ->
             let
                 ( newRand, maybeNum, nextCmd ) =
@@ -490,9 +507,57 @@ view model =
                             , style "color" "#7f8c8d"
                             ]
                             [ text ("🌱 Seed: " ++ String.fromInt model.randomizer.baseSeed) ]
+                        
+                        -- For specific seeds
+                        , Html.form
+                            [ onSubmit SetSeed
+                            , style "margin-top" "10px"
+                            , style "padding" "10px"
+                            , style "background-color" "white"
+                            , style "border-radius" "6px"
+                            , style "text-align" "center"
+                            , style "font-size" "14px"
+                            , style "color" "#7f8c8d"
+                            ]
+                            [ div
+                                [ style "display" "flex"
+                                , style "gap" "10px"
+                                , style "align-items" "center"
+                                ]
+                                [ input
+                                    [ type_ "number"
+                                    , value model.seedInput
+                                    , onInput SeedInputChanged
+                                    , placeholder "Set a specific seed"
+                                    , Html.Attributes.min "1"
+                                    , Html.Attributes.max "999999"
+                                    , style "flex" "1"
+                                    , style "padding" "12px 20px"
+                                    , style "font-size" "18px"
+                                    , style "border" "2px solid #3498db"
+                                    , style "border-radius" "8px"
+                                    , style "outline" "none"
+                                    ]
+                                    []
+                                , button
+                                    [ type_ "submit"
+                                    , style "padding" "12px 30px"
+                                    , style "font-size" "18px"
+                                    , style "background-color" "#78C841"
+                                    , style "color" "white"
+                                    , style "border" "none"
+                                    , style "border-radius" "8px"
+                                    , style "cursor" "pointer"
+                                    , style "font-weight" "bold"
+                                    , style "transition" "all 0.3s"
+                                    ]
+                                    []
+                                ]
+                            ]
                         ]
                     ]
                 ]
+            
 
             -- RIGHT COLUMN: Game Area
             , div

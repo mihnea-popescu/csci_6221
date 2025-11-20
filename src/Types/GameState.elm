@@ -9,6 +9,7 @@ type alias GameState =
     , streak : Int
     , attempts : Int
     , feedback : Feedback
+    , setSeed : Maybe Int
     }
 
 type Feedback
@@ -26,4 +27,5 @@ init =
     , streak = 0
     , attempts = 0
     , feedback = NoFeedback
+    , setSeed = Nothing
     }
